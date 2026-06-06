@@ -17,7 +17,7 @@ Features
 Installation
 
 ```bash
-npm install aether-template-engine
+npm install @aetherframework/template-engine
 ```
 
 Quick Start
@@ -25,7 +25,7 @@ Quick Start
 Basic Usage
 
 ```javascript
-import AetherEngine from 'aether-template-engine';
+import AetherEngine from '@aetherframework/template-engine';
 
 // Initialize the engine
 const engine = new AetherEngine({
@@ -104,7 +104,7 @@ console.log(html);
 Using Factory Pattern
 
 ```javascript
-import { createEngine } from 'aether-template-engine';
+import { createEngine } from '@aetherframework/template-engine';
 
 // Create engine factory
 const factory = await createEngine({
@@ -347,7 +347,7 @@ createEngine(options)
 Create a template engine factory.
 
 ```javascript
-import { createEngine } from 'aether-template-engine';
+import { createEngine } from '@aetherframework/template-engine';
 
 const factory = await createEngine({
   mode: 'template',  // 'template' or 'ssr'
@@ -410,7 +410,7 @@ Express.js Integration
 
 ```javascript
 import express from 'express';
-import { createEngine } from 'aether-template-engine';
+import { createEngine } from '@aetherframework/template-engine';
 
 const app = express();
 
@@ -462,7 +462,7 @@ Koa.js Integration
 
 ```javascript
 import Koa from 'koa';
-import { createEngine } from 'aether-template-engine';
+import { createEngine } from '@aetherframework/template-engine';
 
 const app = new Koa();
 
@@ -642,7 +642,7 @@ MIT License - see LICENSE file for details.
 
 Support
 
-For issues and feature requests, please visit the [GitHub repository](https://github.com/yourusername/aether-template-engine).
+For issues and feature requests, please visit the [GitHub repository](https://github.com/yourusername/@aetherframework/template-engine).
 
 Contributing
 
