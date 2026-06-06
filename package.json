@@ -1,0 +1,42 @@
+{
+  "name": "@aetherframework/template-engine",
+  "version": "1.0.0",
+  "description": "A lightweight, high-performance template engine with SSR support and custom syntax",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node examples/basic-usage.js",
+    "test:basic": "node examples/basic-usage.js",
+    "test:layout": "node examples/layout-example.js",
+    "test:ssr": "node examples/ssr-example.js",
+    "clean": "rm -rf templates/cache"
+  },
+  "author": "Aether Framework Team",
+   "license": "MIT",
+   "repository": {
+      "type": "git",
+      "url": "https://github.com/aetherjs/aetherframework-template-engine.git"
+   },
+   "bugs": {
+      "url": "https://github.com/aetherjs/aetherframework-template-engine/issues",
+      "email": "support@aetherjs.org"
+   },
+   "homepage": "https://www.aetherjs.org",
+  "files": [
+    "index.js",
+    "README.md",
+    "src",
+    "examples",
+    "LICENSE"
+  ],
+  "keywords": [
+    "template",
+    "engine",
+    "ssr",
+    "aether",
+    "html"
+  ],
+  "dependencies": {
+    "fs-extra": "^11.2.0"
+  }
+}
