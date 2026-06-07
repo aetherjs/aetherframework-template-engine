@@ -22,12 +22,21 @@ class SSRModeEngine extends AetherEngine {
     this.ssrOptions = {
       hydrate: options.hydrate !== false,
       stream: options.stream || false,
+      // SSR compression options
+      compressSSR: options.compressSSR !== false,
+      minifySSR: options.minifySSR !== false,
       ...options
+    };
+    
+    // Merge compression options
+    this.options = { 
+      ...this.options, 
+      ...this.ssrOptions 
     };
   }
   
-  /**
-   * Render template with SSR optimizations
+    /**
+   * Render template with SSR optimizations and compression
    * @param {string} templateName - Template name or content
    * @param {Object} data - Template data
    * @param {Object} options - Render options
@@ -38,9 +47,25 @@ class SSRModeEngine extends AetherEngine {
     const content = await super.render(templateName, data, options);
     
     // Wrap and enhance for SSR
-    return this.enhanceForSSR(content, data, options);
+    const enhancedHtml = this.enhanceForSSR(content, data, options);
+    
+    // Apply SSR-specific compression if enabled
+    const shouldCompress = this.options.compressionEnabled && 
+                         (this.ssrOptions.compressSSR || 
+                          (process.env.NODE_ENV === 'production' && this.ssrOptions.minifySSR));
+    
+    if (shouldCompress) {
+      return this.processWithCompression(enhancedHtml, {
+        ...options.compression,
+        minifyHTML: this.options.minifyHTML,
+        minifyCSS: this.options.minifyCSS,
+        minifyJS: this.options.minifyJS,
+        mangleJS: this.options.mangleJS
+      });
+    }
+    
+    return enhancedHtml;
   }
-  
   /**
    * Enhance rendered content for SSR by wrapping it in a full HTML document
    * @param {string} content - Rendered HTML content

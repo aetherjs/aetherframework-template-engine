@@ -13,40 +13,95 @@
 import fs from 'fs-extra';
 import path from 'path';
 import crypto from 'crypto';
+import CompressionEngine from './CompressionEngine.js';
 
 class AetherEngine {
-  constructor(options = {}) {
-    this.name = 'aether';
-    this.version = '1.3.0'; // Version upgraded
-    this.initialized = false;
+constructor(options = {}) {
+  this.name = 'aether';
+  this.version = '1.3.0';
+  this.initialized = false;
+  
+  this.options = {
+    templateDir: options.templateDir || './templates',
+    cacheEnabled: options.cacheEnabled !== false,
+    cacheTTL: options.cacheTTL || 3600,
+    compileCache: new Map(),
+    templateCache: new Map(),
+    debug: options.debug || false,
+    csrfToken: options.csrfToken || '',
     
-    this.options = {
-      templateDir: options.templateDir || './templates',
-      cacheEnabled: options.cacheEnabled !== false,
-      cacheTTL: options.cacheTTL || 3600,
-      compileCache: new Map(),
-      templateCache: new Map(),
-      debug: options.debug || false,
-      csrfToken: options.csrfToken || '', 
-      ...options
-    };
-    
-    this.filters = new Map();
-    this.functions = new Map();
-    this.layouts = new Map();
-    this.routes = {}; 
-    
-    this.ensureTemplateDir();
-    this.registerDefaultFilters();
-    this.registerDefaultFunctions();
-  }
+    // Compression options
+    compressionEnabled: options.compressionEnabled !== false,
+    minifyHTML: options.minifyHTML !== false,
+    minifyCSS: options.minifyCSS !== false,
+    minifyJS: options.minifyJS !== false,
+    mangleJS: options.mangleJS || false,
+    removeComments: options.removeComments || false,
+    collapseWhitespace: options.collapseWhitespace || true,
+    cacheCompressed: options.cacheCompressed !== false,
+    ...options
+  };
+  
+  // Initialize compression engine
+  this.compressionEngine = new CompressionEngine(this.options);
+  
+  this.filters = new Map();
+  this.functions = new Map();
+  this.layouts = new Map();
+  this.routes = {};
+  
+  this.ensureTemplateDir();
+  this.registerDefaultFilters();
+  this.registerDefaultFunctions();
+}
   
   initialize() {
     if (this.initialized) return;
     console.log(`Aether Engine initialized (v${this.version})`);
     this.initialized = true;
   }
+  /**
+ * Process content with compression based on options
+ * @param {string} content - Content to process
+ * @param {Object} options - Processing options
+ * @returns {string} Processed content
+ */
+processWithCompression(content, options = {}) {
+  if (!this.options.compressionEnabled) {
+    return content;
+  }
   
+  const processOptions = {
+    minifyHTML: this.options.minifyHTML,
+    minifyCSS: this.options.minifyCSS,
+    minifyJS: this.options.minifyJS,
+    mangleJS: this.options.mangleJS,
+    removeComments: this.options.removeComments,
+    collapseWhitespace: this.options.collapseWhitespace,
+    cacheCompressed: this.options.cacheCompressed,
+    ...options
+  };
+  
+  return this.compressionEngine.processHTML(content, processOptions);
+}
+
+/**
+ * Clear compression cache
+ */
+clearCompressionCache() {
+  if (this.compressionEngine) {
+    this.compressionEngine.clearCompressionCache();
+  }
+}
+
+/**
+ * Get compression statistics
+ * @returns {Object} Compression statistics
+ */
+getCompressionStats() {
+  return this.compressionEngine ? this.compressionEngine.getStats() : null;
+}
+
   ensureTemplateDir() {
     const dirs = [
       this.options.templateDir,
@@ -512,41 +567,92 @@ class AetherEngine {
     }
   }
 
-  async render(templateName, data = {}, options = {}) {
-    if (!this.initialized) this.initialize();
-    let templateContent = templateName;
-    
-    const isFilePath = typeof templateName === 'string' && !templateName.includes('\n') && !templateName.includes('<') && (templateName.endsWith('.aether') || templateName.endsWith('.html') || templateName.includes('/') || templateName.includes('\\'));
-    if (isFilePath) templateContent = await this.loadTemplate(templateName);
-    
-    const extendsMatch = templateContent.match(/@extends\s*\(\s*'([^']+)'\s*\)/);
-    if (extendsMatch) {
-      const layoutName = extendsMatch[1];
-      try {
-        const layoutContent = await this.loadTemplate(layoutName);
-        const sections = {};
-        const sectionRegex = /@section\s*\(\s*'([^']+)'\s*\)([\s\S]*?)@endsection/g;
-        let sectionMatch;
-        while ((sectionMatch = sectionRegex.exec(templateContent)) !== null) sections[sectionMatch[1]] = sectionMatch[2].trim();
-        
-        const inlineSectionRegex = /@section\s*\(\s*'([^']+)'\s*,\s*'([^']*)'\s*\)/g;
-        let inlineMatch;
-        while ((inlineMatch = inlineSectionRegex.exec(templateContent)) !== null) sections[inlineMatch[1]] = inlineMatch[2];
-        
-        const yieldRegex = /@yield\s*\(\s*'([^']+)'(?:\s*,\s*'([^']*)')?\s*\)/g;
-        templateContent = layoutContent.replace(yieldRegex, (match, name, defaultValue) => sections[name] !== undefined ? sections[name] : (defaultValue || ''));
-      } catch (error) { console.warn(`Warning: Could not load layout '${layoutName}':`, error.message); }
+ async render(templateName, data = {}, options = {}) {
+  if (!this.initialized) this.initialize();
+  let templateContent = templateName;
+  
+  const isFilePath = typeof templateName === 'string' && !templateName.includes('\n') && !templateName.includes('<') && (templateName.endsWith('.aether') || templateName.endsWith('.html') || templateName.includes('/') || templateName.includes('\\'));
+  if (isFilePath) templateContent = await this.loadTemplate(templateName);
+  
+  // 【修复1】：恢复正确的正则表达式 \(\)
+  const extendsMatch = templateContent.match(/@extends\s*\(\s*'([^']+)'\s*\)/);
+  if (extendsMatch) {
+    // 【修复2】：恢复正确的匹配组索引 [1]
+    const layoutName = extendsMatch[1]; 
+    try {
+      const layoutContent = await this.loadTemplate(layoutName);
+      const sections = {};
+      
+      // 【修复1】：恢复正确的正则表达式
+      const sectionRegex = /@section\s*\(\s*'([^']+)'\s*\)([\s\S]*?)@endsection/g;
+      let sectionMatch;
+      while ((sectionMatch = sectionRegex.exec(templateContent)) !== null) {
+        // 【修复2】：恢复正确的匹配组索引 [1] 和 [2]
+        sections[sectionMatch[1]] = sectionMatch[2].trim(); 
+      }
+      
+      // 【修复1】：恢复正确的正则表达式
+      const inlineSectionRegex = /@section\s*\(\s*'([^']+)'\s*,\s*'([^']*)'\s*\)/g;
+      let inlineMatch;
+      while ((inlineMatch = inlineSectionRegex.exec(templateContent)) !== null) {
+        // 【修复2】：恢复正确的匹配组索引 [1] 和 [2]
+        sections[inlineMatch[1]] = inlineMatch[2]; 
+      }
+      
+      // 【修复1】：恢复正确的正则表达式
+      const yieldRegex = /@yield\s*\(\s*'([^']+)'(?:\s*,\s*'([^']*)')?\s*\)/g;
+      templateContent = layoutContent.replace(yieldRegex, (match, name, defaultValue) => 
+        sections[name] !== undefined ? sections[name] : (defaultValue || '')
+      );
+    } catch (error) { 
+      console.warn(`Warning: Could not load layout '${layoutName}':`, error.message); 
     }
-    
-    const renderFunc = this.compile(templateContent);
-    // FIX: Pass engine instance to helpers so __include can synchronously call loadTemplateSync
-    return renderFunc(data, { 
-        filters: this.filters, 
-        functions: this.functions, 
-        includes: options.includes || {},
-        engine: this 
-    });
   }
+  
+  const renderFunc = this.compile(templateContent);
+  
+  // 【关键修复】: 保存渲染结果到变量，而不是直接 return，以便后续进行压缩处理
+  const renderedContent = renderFunc(data, { 
+    filters: this.filters, 
+    functions: this.functions, 
+    includes: options.includes || {},
+    engine: this 
+  });
+  
+  // Apply compression if enabled
+  if (this.options.compressionEnabled) {
+    const compressionOptions = {
+      minifyHTML: this.options.minifyHTML,
+      minifyCSS: this.options.minifyCSS,
+      minifyJS: this.options.minifyJS,
+      mangleJS: this.options.mangleJS,
+      removeComments: this.options.removeComments,
+      collapseWhitespace: this.options.collapseWhitespace,
+      removeAttributeQuotes: this.options.removeAttributeQuotes,
+      removeEmptyAttributes: this.options.removeEmptyAttributes,
+      cacheCompressed: this.options.cacheCompressed,
+      ...options.compression // Allow per-render override
+    };
+    
+    // Use the compression engine to process the rendered content
+    if (this.compressionEngine) {
+      const compressedContent = this.compressionEngine.processHTML(renderedContent, compressionOptions);
+      
+      // Log compression statistics in debug mode
+      if (this.options.debug) {
+        const originalSize = renderedContent.length;
+        const compressedSize = compressedContent.length;
+        const reduction = ((originalSize - compressedSize) / originalSize * 100).toFixed(2);
+        console.log(`[AetherEngine] Compression applied: ${originalSize} → ${compressedSize} bytes (${reduction}% reduction)`);
+      }
+      
+      return compressedContent;
+    }
+  }
+  
+  return renderedContent;
+}
+
 
   // FIX: Extract unified path resolution logic, supporting dot notation (e.g., 'partials.header')
   _getTemplatePaths(templateName) {

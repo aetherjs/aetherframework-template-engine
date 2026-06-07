@@ -11,7 +11,7 @@
 import AetherEngine from './AetherEngine.js';
 
 class TemplateModeEngine extends AetherEngine {
-  constructor(options = {}) {
+ constructor(options = {}) {
     super(options);
     this.name = 'template-mode';
     this.version = '1.0.0';
@@ -21,7 +21,16 @@ class TemplateModeEngine extends AetherEngine {
       layoutSupport: options.layoutSupport !== false,
       includeSupport: options.includeSupport !== false,
       cacheTemplates: options.cacheTemplates !== false,
+      // Template mode compression options
+      compressTemplates: options.compressTemplates !== false,
+      minifyTemplates: options.minifyTemplates !== false,
       ...options
+    };
+    
+    // Merge compression options
+    this.options = { 
+      ...this.options, 
+      ...this.templateOptions 
     };
     
     // Initialize template directories
@@ -91,7 +100,7 @@ class TemplateModeEngine extends AetherEngine {
   }
   
   /**
-   * Render template with template mode enhancements
+   * Render template with template mode enhancements and compression
    * @param {string} templateName - Template name or content
    * @param {Object} data - Template data
    * @param {Object} options - Render options
@@ -114,7 +123,24 @@ class TemplateModeEngine extends AetherEngine {
     const content = await super.render(templateName, enhancedData, options);
     
     // Add template mode specific enhancements
-    return this.enhanceForTemplateMode(content, enhancedData, options);
+    const enhancedContent = this.enhanceForTemplateMode(content, enhancedData, options);
+    
+    // Apply template-specific compression if enabled
+    const shouldCompress = this.options.compressionEnabled && 
+                         (this.templateOptions.compressTemplates || 
+                          (process.env.NODE_ENV === 'production' && this.templateOptions.minifyTemplates));
+    
+    if (shouldCompress) {
+      return this.processWithCompression(enhancedContent, {
+        ...options.compression,
+        minifyHTML: this.options.minifyHTML,
+        minifyCSS: this.options.minifyCSS,
+        minifyJS: this.options.minifyJS,
+        mangleJS: this.options.mangleJS
+      });
+    }
+    
+    return enhancedContent;
   }
   
   /**

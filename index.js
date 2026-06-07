@@ -23,6 +23,9 @@ export { default as EngineRegistry } from './src/core/EngineRegistry.js';
 export { default as ModeManager } from './src/core/ModeManager.js';
 export { default as CacheManager } from './src/core/CacheManager.js';
 
+// Export compression utilities
+export { default as CompressionEngine } from './src/engines/CompressionEngine.js';
+
 /**
  * Create a template engine factory with default configuration
  * @param {Object} options - Configuration options
@@ -71,7 +74,16 @@ export async function quickStart(options = {}) {
     mode: 'template',
     templateDir: './templates',
     cacheEnabled: true,
-    debug: process.env.NODE_ENV === 'development'
+    debug: process.env.NODE_ENV === 'development',
+    // Add compression options
+    compressionEnabled: process.env.NODE_ENV === 'production',
+    minifyHTML: process.env.NODE_ENV === 'production',
+    minifyCSS: process.env.NODE_ENV === 'production',
+    minifyJS: process.env.NODE_ENV === 'production',
+    mangleJS: process.env.NODE_ENV === 'production',
+    removeComments: process.env.NODE_ENV === 'production',
+    collapseWhitespace: true,
+    cacheCompressed: true
   };
   
   const config = { ...defaultOptions, ...options };
@@ -145,6 +157,10 @@ export async function quickStart(options = {}) {
                 <div class="flex items-center justify-between">
                     <span>Template Dir:</span>
                     <code class="bg-gray-900 px-2 py-1 rounded">{{templateDir}}</code>
+                </div>
+                <div class="flex items-center justify-between">
+                    <span>Compression:</span>
+                    <span class="{{compressionEnabled ? 'text-green-500' : 'text-red-500'}}">{{compressionEnabled ? 'Enabled' : 'Disabled'}}</span>
                 </div>
             </div>
         </div>

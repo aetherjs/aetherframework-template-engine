@@ -5,7 +5,7 @@ A modern, lightweight template engine for Node.js with Blade-like syntax, suppor
 Features
 
 - Blade-like Syntax: Familiar syntax similar to Laravel Blade
-- Template Inheritance: Support for `@extends`, `@section`, `@yield`, `@include`
+- Template Inheritance: Support for `@extends`, `@section`, `@yield`
 - Conditionals & Loops: `@if`, `@else`, `@endif`, `@foreach`, `@endforeach`
 - Custom Functions: `{{ route('home') }}`, `{{ asset('images/logo.png') }}`
 - Chained Properties: `{{ auth().user.name }}`
@@ -608,6 +608,436 @@ project/
 ├── package.json
 └── app.js
 ```
+
+
+---
+
+Compression Features
+
+The Aether Template Engine includes a powerful built-in compression system that automatically minifies and optimizes your HTML, CSS, and JavaScript output for production environments. This feature helps reduce bandwidth usage, improve page load times, and enhance overall performance.
+
+Basic Compression Configuration
+
+```javascript
+import AetherEngine from '@aetherframework/template-engine';
+
+// Initialize the engine with compression enabled
+const engine = new AetherEngine({
+  templateDir: './templates',
+  cacheEnabled: true,
+  debug: process.env.NODE_ENV === 'development',
+  
+  // Compression configuration
+  compressionEnabled: true,           // Enable/disable compression globally
+  minifyHTML: true,                   // Minify HTML structure (remove whitespace, comments)
+  minifyCSS: true,                    // Minify inline CSS styles
+  minifyJS: true,                     // Minify inline JavaScript code
+  mangleJS: false,                    // Obfuscate JavaScript variable names (production only)
+  removeComments: true,               // Remove HTML/CSS/JS comments
+  collapseWhitespace: true,           // Collapse multiple whitespace characters
+  removeAttributeQuotes: false,       // Remove optional quotes from HTML attributes
+  removeEmptyAttributes: false,       // Remove empty HTML attributes
+  cacheCompressed: true,              // Cache compressed results for performance
+  cacheTTL: 3600000                   // Cache time-to-live in milliseconds (1 hour)
+});
+
+await engine.initialize();
+```
+
+Environment-Based Configuration
+
+```javascript
+// Development environment - disable compression for easier debugging
+const devEngine = new AetherEngine({
+  compressionEnabled: false,
+  minifyHTML: false,
+  minifyCSS: false,
+  minifyJS: false,
+  mangleJS: false,
+  removeComments: false,
+  collapseWhitespace: false,
+  cacheCompressed: false,
+  debug: true
+});
+
+// Production environment - enable all compression for optimal performance
+const prodEngine = new AetherEngine({
+  compressionEnabled: true,
+  minifyHTML: true,
+  minifyCSS: true,
+  minifyJS: true,
+  mangleJS: true,                    // Obfuscate JS in production for security
+  removeComments: true,
+  collapseWhitespace: true,
+  removeAttributeQuotes: true,
+  removeEmptyAttributes: true,
+  cacheCompressed: true,
+  cacheTTL: 3600000,                 // 1 hour cache
+  debug: false
+});
+```
+
+Per-Render Compression Options
+
+You can override compression settings for individual template renders:
+
+```javascript
+// Render with specific compression options
+const html = await engine.render('template.aether', data, {
+  compression: {
+    minifyHTML: true,
+    minifyCSS: true,
+    minifyJS: true,
+    mangleJS: process.env.NODE_ENV === 'production',
+    removeComments: true,
+    collapseWhitespace: true
+  }
+});
+```
+
+Compression Examples
+
+Before Compression (Development):
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Application</title>
+  <style>
+    /* Main styles */
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Welcome to {{ app.name }}</h1>
+    <p>This is a sample page with uncompressed output.</p>
+  </div>
+  
+  <script>
+    // JavaScript code
+    function greetUser(name) {
+      console.log("Hello, " + name + "!");
+    }
+    
+    greetUser("John");
+  </script>
+</body>
+</html>
+```
+
+After Compression (Production):
+```html
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My Application</title><style>body{margin:0;padding:0;font-family:Arial,sans-serif}.container{width:100%;max-width:1200px;margin:0 auto;padding:20px}</style></head><body><div class="container"><h1>Welcome to MyApp</h1><p>This is a sample page with compressed output.</p></div><script>function a(b){console.log("Hello, "+b+"!")}a("John")</script></body></html>
+```
+
+Compression Statistics and Cache Management
+
+```javascript
+// Get compression statistics
+const stats = engine.getCompressionStats();
+console.log(stats);
+// Output: { cacheSize: 15, cacheHits: 42, cacheTTL: 3600000, options: {...} }
+
+// Clear compression cache (useful during development)
+engine.clearCompressionCache();
+
+// Check if compression is enabled
+const isCompressionEnabled = engine.options.compressionEnabled;
+```
+
+SSR Mode with Compression
+
+```javascript
+import { SSRModeEngine } from '@aetherframework/template-engine';
+
+const ssrEngine = new SSRModeEngine({
+  templateDir: './templates',
+  hydrate: true,
+  stream: false,
+  
+  // SSR-specific compression options
+  compressSSR: true,
+  minifySSR: true,
+  
+  // General compression settings
+  compressionEnabled: true,
+  minifyHTML: true,
+  minifyCSS: true,
+  minifyJS: true,
+  mangleJS: process.env.NODE_ENV === 'production',
+  removeComments: true,
+  collapseWhitespace: true,
+  cacheCompressed: true
+});
+
+// Render with SSR and compression
+const html = await ssrEngine.render('app.aether', data);
+```
+
+Template Mode with Compression
+
+```javascript
+import { TemplateModeEngine } from '@aetherframework/template-engine';
+
+const templateEngine = new TemplateModeEngine({
+  templateDir: './templates',
+  layoutSupport: true,
+  includeSupport: true,
+  
+  // Template-specific compression
+  compressTemplates: true,
+  minifyTemplates: true,
+  
+  // General compression settings
+  compressionEnabled: true,
+  minifyHTML: true,
+  minifyCSS: true,
+  minifyJS: true,
+  mangleJS: false, // Usually keep JS readable in template mode
+  removeComments: true,
+  collapseWhitespace: true,
+  cacheCompressed: true
+});
+
+// Render template with compression
+const html = await templateEngine.render('page.aether', data);
+```
+
+Environment Configuration
+
+Create a `.env` file with compression settings:
+
+```env
+Compression Configuration
+COMPRESSION_ENABLED=true
+MINIFY_HTML=true
+MINIFY_CSS=true
+MINIFY_JS=true
+MANGLE_JS=true
+REMOVE_COMMENTS=true
+COLLAPSE_WHITESPACE=true
+REMOVE_ATTRIBUTE_QUOTES=true
+REMOVE_EMPTY_ATTRIBUTES=true
+CACHE_COMPRESSED=true
+CACHE_TTL=3600000
+
+Template Engine Configuration
+TEMPLATE_ENGINE_MODE=template
+TEMPLATE_DIR=./templates
+CACHE_ENABLED=true
+CACHE_TTL=300000
+DEBUG=false
+```
+
+Express.js Integration with Compression
+
+```javascript
+import express from 'express';
+import { createEngine } from '@aetherframework/template-engine';
+
+const app = express();
+
+// Initialize template engine with compression
+const factory = await createEngine({
+  templateDir: './views',
+  cacheEnabled: process.env.NODE_ENV === 'production',
+  
+  // Compression based on environment
+  compressionEnabled: process.env.NODE_ENV === 'production',
+  minifyHTML: process.env.NODE_ENV === 'production',
+  minifyCSS: process.env.NODE_ENV === 'production',
+  minifyJS: process.env.NODE_ENV === 'production',
+  mangleJS: process.env.NODE_ENV === 'production',
+  removeComments: process.env.NODE_ENV === 'production',
+  collapseWhitespace: true,
+  cacheCompressed: true
+});
+
+const renderer = factory.createRenderer('aether');
+
+// Middleware to add render method with compression
+app.use((req, res, next) => {
+  res.render = async (template, data = {}, options = {}) => {
+    try {
+      const html = await renderer.render(template, {
+        ...data,
+        req,
+        res,
+        csrfToken: req.csrfToken ? req.csrfToken() : null
+      }, {
+        // Override compression per route if needed
+        compression: {
+          minifyHTML: true,
+          minifyCSS: true,
+          minifyJS: true,
+          mangleJS: process.env.NODE_ENV === 'production',
+          ...options.compression
+        }
+      });
+      
+      // Set compression headers
+      res.setHeader('X-Compression-Enabled', 'true');
+      res.setHeader('X-Compression-Mode', 'template');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      
+      res.send(html);
+    } catch (error) {
+      console.error('Render error:', error);
+      res.status(500).send('Internal Server Error');
+    }
+  };
+  next();
+});
+
+// Route with compressed output
+app.get('/', async (req, res) => {
+  const data = {
+    title: 'Home Page',
+    user: req.user || null,
+    products: await Product.find(),
+    csrfToken: req.csrfToken ? req.csrfToken() : null
+  };
+  
+  await res.render('home', data, {
+    // Optional: Custom compression for this route
+    compression: {
+      minifyHTML: true,
+      minifyCSS: true,
+      minifyJS: true,
+      mangleJS: process.env.NODE_ENV === 'production'
+    }
+  });
+});
+
+app.listen(3000, () => {
+  console.log('Server running on http://localhost:3000');
+  console.log(`Compression: ${process.env.NODE_ENV === 'production' ? 'Enabled' : 'Disabled'}`);
+});
+```
+
+Performance Benefits
+
+1. Reduced Bandwidth Usage: Compressed HTML can be 30-70% smaller than uncompressed versions
+2. Faster Page Load Times: Smaller file sizes lead to quicker downloads and parsing
+3. Improved SEO: Faster loading pages are favored by search engines
+4. Better User Experience: Users see content faster, especially on mobile devices
+5. Reduced Server Load: Less data transmission means lower server resource usage
+6. Enhanced Security: JavaScript obfuscation (`mangleJS`) makes code harder to reverse-engineer
+
+Compression Options Reference
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `compressionEnabled` | boolean | `false` | Enable/disable compression globally |
+| `minifyHTML` | boolean | `true` | Minify HTML structure (remove whitespace, comments) |
+| `minifyCSS` | boolean | `true` | Minify inline CSS styles |
+| `minifyJS` | boolean | `true` | Minify inline JavaScript code |
+| `mangleJS` | boolean | `false` | Obfuscate JavaScript variable names |
+| `removeComments` | boolean | `true` | Remove HTML, CSS, and JavaScript comments |
+| `collapseWhitespace` | boolean | `true` | Collapse multiple whitespace characters into single spaces |
+| `removeAttributeQuotes` | boolean | `false` | Remove optional quotes from HTML attributes |
+| `removeEmptyAttributes` | boolean | `false` | Remove empty HTML attributes |
+| `cacheCompressed` | boolean | `true` | Cache compressed results to avoid re-compression |
+| `cacheTTL` | number | `3600000` | Cache time-to-live in milliseconds (1 hour) |
+
+Troubleshooting Compression
+
+Common Issues:
+
+1. Compression not working: Ensure `compressionEnabled` is set to `true` in your configuration
+2. JavaScript errors after compression: Disable `mangleJS` or check for variable name conflicts in your code
+3. CSS broken after compression: Verify CSS syntax is valid and doesn't contain edge cases
+4. Cache not updating: Clear compression cache with `engine.clearCompressionCache()` during development
+5. Performance issues: Adjust `cacheTTL` based on your application's update frequency
+
+Debug Mode for Compression:
+
+```javascript
+const engine = new AetherEngine({
+  compressionEnabled: true,
+  debug: true  // Enable debug logs
+});
+
+// Check compression logs in console
+// [AetherEngine] Compression applied: 10240 → 5120 bytes (50% reduction)
+// [AetherEngine] Cache hit for template: home.aether
+// [AetherEngine] Compression statistics: { cacheSize: 5, cacheHits: 23 }
+```
+
+Best Practices
+
+1. Development Environment: Disable compression (`compressionEnabled: false`) for easier debugging and readable output
+2. Production Environment: Enable all compression options for optimal performance and security
+3. Testing: Test with `mangleJS: false` first, then enable for production after verification
+4. Monitoring: Use `getCompressionStats()` to monitor cache performance and hit rates
+5. Caching Strategy: Always enable `cacheCompressed: true` in production to avoid re-compressing the same content
+6. Incremental Deployment: Deploy compression changes gradually and monitor for issues
+7. Backup Originals: Keep uncompressed templates in source control for debugging purposes
+
+Advanced Compression Configuration
+
+For fine-grained control over compression behavior:
+
+```javascript
+const engine = new AetherEngine({
+  compressionEnabled: true,
+  
+  // HTML-specific options
+  minifyHTML: true,
+  collapseWhitespace: true,
+  conservativeCollapse: false, // Preserve single whitespace
+  preserveLineBreaks: false,   // Remove all line breaks
+  removeComments: true,
+  removeEmptyAttributes: true,
+  removeAttributeQuotes: true,
+  removeOptionalTags: false,    // Don't remove optional tags like </li>
+  
+  // CSS-specific options
+  minifyCSS: true,
+  cssMinifierOptions: {
+    level: 2,                  // Optimization level (1-3)
+    compatibility: '*',        // Browser compatibility
+    format: 'keep-breaks'      // Output formatting
+  },
+  
+  // JavaScript-specific options
+  minifyJS: true,
+  mangleJS: true,
+  mangleOptions: {
+    reserved: ['render', 'data', 'helpers'] // Variables to preserve
+  },
+  jsMinifierOptions: {
+    compress: {
+      drop_console: true,      // Remove console statements
+      drop_debugger: true      // Remove debugger statements
+    },
+    mangle: {
+      properties: false         // Don't mangle property names
+    }
+  },
+  
+  // Cache configuration
+  cacheCompressed: true,
+  cacheTTL: 3600000,
+  cacheMaxSize: 100            // Maximum number of cached items
+});
+```
+
+This compression feature is seamlessly integrated into the Aether Template Engine, providing automatic optimization without requiring changes to your template code. The system intelligently handles different content types and provides configurable options for both development and production environments.
 
 Performance Tips
 
