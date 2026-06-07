@@ -17,7 +17,7 @@ import crypto from 'crypto';
 class AetherEngine {
   constructor(options = {}) {
     this.name = 'aether';
-    this.version = '1.2.0';
+    this.version = '1.3.0'; // Version upgraded
     this.initialized = false;
     
     this.options = {
@@ -27,7 +27,7 @@ class AetherEngine {
       compileCache: new Map(),
       templateCache: new Map(),
       debug: options.debug || false,
-      csrfToken: options.csrfToken || '', // CSRF token support
+      csrfToken: options.csrfToken || '', 
       ...options
     };
     
@@ -64,12 +64,10 @@ class AetherEngine {
     this.filter('escape', (value) => this.escapeHtml(value));
     this.filter('json', (value) => JSON.stringify(value));
     this.filter('date', (value) => new Date(value).toISOString().split('T')[0]);
-    // NEW: raw filter to bypass escaping
     this.filter('raw', (value) => value); 
   }
   
   registerDefaultFunctions() {
-    // Dynamic route function
     this.function('route', (name, params = {}) => {
       let url = this.routes[name] || `/${name}`;
       if (params && typeof params === 'object') {
@@ -84,60 +82,38 @@ class AetherEngine {
     this.function('auth', () => ({ check: () => true, user: { name: 'John Doe', email: 'john@example.com', id: 1 } }));
     this.function('env', (key, defaultValue = '') => process.env[key] || defaultValue);
     this.function('url', (urlPath) => `${process.env.BASE_URL || 'http://localhost:3000'}${urlPath.startsWith('/') ? urlPath : '/' + urlPath}`);
-    
-    // NEW: CSRF Token generator
     this.function('csrf', () => `<input type="hidden" name="_csrf" value="${this.options.csrfToken}">`);
     
-    // NEW: Old input retrieval (for form validation fallbacks)
     this.function('old', (field, defaultValue = '') => {
-      return `__get('old.${field}') || ${JSON.stringify(defaultValue)}`; // Handled dynamically in parser
+      return `__get('old.${field}') || ${JSON.stringify(defaultValue)}`;
     });
 
-    // NEW: Dynamic Class builder (e.g., @class(['btn', 'active' => isActive]))
     this.function('class', (classes) => {
       if (Array.isArray(classes)) {
-        return classes.filter(c => {
-          if (typeof c === 'string') return true;
-          return false; // Object conditions are handled at runtime via JS
-        }).join(' ');
+        return classes.filter(c => typeof c === 'string').join(' ');
       }
       return '';
     });
 
-    // NEW: Pagination HTML Generator
     this.function('pagination', (pager) => {
       if (!pager || !pager.total || pager.total <= 1) return '';
       let html = '<nav class="aether-pagination" aria-label="Pagination">';
-      
-      // Prev
-      if (pager.current > 1) {
-        html += `<a href="${pager.baseUrl}?page=${pager.current - 1}" class="page-link prev">&laquo; Prev</a>`;
-      } else {
-        html += `<span class="page-link disabled">&laquo; Prev</span>`;
-      }
+      if (pager.current > 1) html += `<a href="${pager.baseUrl}?page=${pager.current - 1}" class="page-link prev">&laquo; Prev</a>`;
+      else html += `<span class="page-link disabled">&laquo; Prev</span>`;
 
-      // Pages (Simple windowing logic)
       const start = Math.max(1, pager.current - 2);
       const end = Math.min(pager.total, pager.current + 2);
-      
       if (start > 1) html += `<a href="${pager.baseUrl}?page=1" class="page-link">1</a><span class="dots">...</span>`;
       
       for (let i = start; i <= end; i++) {
-        if (i === pager.current) {
-          html += `<span class="page-link active">${i}</span>`;
-        } else {
-          html += `<a href="${pager.baseUrl}?page=${i}" class="page-link">${i}</a>`;
-        }
+        if (i === pager.current) html += `<span class="page-link active">${i}</span>`;
+        else html += `<a href="${pager.baseUrl}?page=${i}" class="page-link">${i}</a>`;
       }
       
       if (end < pager.total) html += `<span class="dots">...</span><a href="${pager.baseUrl}?page=${pager.total}" class="page-link">${pager.total}</a>`;
 
-      // Next
-      if (pager.current < pager.total) {
-        html += `<a href="${pager.baseUrl}?page=${pager.current + 1}" class="page-link next">Next &raquo;</a>`;
-      } else {
-        html += `<span class="page-link disabled">Next &raquo;</span>`;
-      }
+      if (pager.current < pager.total) html += `<a href="${pager.baseUrl}?page=${pager.current + 1}" class="page-link next">Next &raquo;</a>`;
+      else html += `<span class="page-link disabled">Next &raquo;</span>`;
 
       html += '</nav>';
       return html;
@@ -161,7 +137,6 @@ class AetherEngine {
     let cursor = 0;
     
     const parenRegex = '\\(((?:[^()]+|\\([^()]*\\))*)\\)';
-    // Added {!! !!}, @push, @endpush, @stack, @csrf
     const tokenRegex = new RegExp(
       `(\\{!!.*?!!\\}|\\{\\{.*?\\}\\}|@if\\s*${parenRegex}|@elseif\\s*${parenRegex}|@else\\b|@endif\\b|@foreach\\s*${parenRegex}|@endforeach\\b|@forelse\\s*${parenRegex}|@empty\\b|@endforelse\\b|@yield\\s*${parenRegex}|@section\\s*${parenRegex}|@endsection\\b|@extends\\s*${parenRegex}|@include\\s*${parenRegex}|@push\\s*${parenRegex}|@endpush\\b|@stack\\s*${parenRegex}|@csrf\\b)`,
       'gs'
@@ -187,14 +162,12 @@ class AetherEngine {
       cursor = match.index + match[0].length; 
       const token = match[0].trim();
       
-      // 1. Raw Output {!! ... !!}
       if (token.startsWith('{!!') && token.endsWith('!!}')) {
         const expr = token.slice(3, -3).trim();
         if (inSectionBlock) sectionContent += token;
         else if (inStackBlock) stackContent += token;
-        else jsCode += `__output.push(${this.parseExpression(expr, true)});\n`; // true = isRaw
-      }
-      // 2. Escaped Output {{ ... }}
+        else jsCode += `__output.push(${this.parseExpression(expr, true)});\n`; 
+      } 
       else if (token.startsWith('{{') && token.endsWith('}}')) {
         const expr = token.slice(2, -2).trim();
         if (inSectionBlock) sectionContent += token;
@@ -273,7 +246,6 @@ class AetherEngine {
         else if (inStackBlock) stackContent += token;
         else jsCode += `}\n__scope = __parentScope;\n}\n`; 
       }
-      // 3. Stacks (@push / @endpush / @stack)
       else if (token.startsWith('@push')) {
         const pushMatch = token.match(/@push\s*\(\s*'([^']+)'\s*\)/);
         if (pushMatch) {
@@ -305,13 +277,11 @@ class AetherEngine {
           else jsCode += `if(__stacks['${stackMatch[1]}']) { __stacks['${stackMatch[1]}'].forEach(fn => __output.push(fn(__scope, helpers))); }\n`;
         }
       }
-      // 4. CSRF
       else if (token === '@csrf') {
         if (inSectionBlock) sectionContent += token;
         else if (inStackBlock) stackContent += token;
         else jsCode += `__output.push(__functions.get('csrf')());\n`;
       }
-      // 5. Yields & Sections
       else if (token.startsWith('@yield')) {
         const yieldMatch = token.match(/@yield\s*\(\s*'([^']+)'(?:\s*,\s*'([^']*)')?\s*\)/);
         if (yieldMatch) {
@@ -343,12 +313,17 @@ class AetherEngine {
           inSectionBlock = false; currentSectionName = ''; sectionContent = '';
         }
       }
+      // FIX: Enhance @include syntax to support passing data parameters
       else if (token.startsWith('@include')) {
-        const includeMatch = token.match(/@include\s*\(\s*'([^']+)'\s*\)/);
+        const includeMatch = token.match(/@include\s*\(\s*'([^']+)'\s*(?:,\s*([\s\S]*?))?\s*\)/);
         if (includeMatch) {
+          const viewName = includeMatch[1];
+          // Default to empty object if no params; otherwise evaluate as JS expression
+          const dataExpr = includeMatch[2] ? includeMatch[2].trim() : '{}';
+          
           if (inSectionBlock) sectionContent += token;
           else if (inStackBlock) stackContent += token;
-          else jsCode += `__output.push(__include('${includeMatch[1]}'));\n`;
+          else jsCode += `__output.push(__include('${viewName}', ${dataExpr}));\n`;
         }
       }
       else if (token.startsWith('@extends')) {
@@ -371,7 +346,6 @@ class AetherEngine {
           return __output.join('');
         };\n`;
       } else if (inStackBlock) {
-         // Handle unclosed push block gracefully
          stackContent += remainingText;
       } else {
         jsCode += `__output.push(${JSON.stringify(remainingText)});\n`;
@@ -392,8 +366,28 @@ class AetherEngine {
         }
         return value;
       }
-      function __include(name) {
-        if (helpers.includes && helpers.includes[name]) return helpers.includes[name](__scope, helpers);
+      
+      // FIX: Fully implement __include to support synchronous loading, compiling, and rendering of sub-templates from disk
+      function __include(name, includeData = {}) {
+        // 1. Merge current scope with passed include data
+        const mergedScope = Object.assign({}, __scope, includeData);
+        
+        // 2. Prioritize pre-compiled includes (passed via render options)
+        if (helpers.includes && helpers.includes[name]) {
+            return helpers.includes[name](mergedScope, helpers);
+        }
+        
+        // 3. Synchronously load and compile template from disk
+        if (helpers.engine) {
+            try {
+                const content = helpers.engine.loadTemplateSync(name);
+                const compiled = helpers.engine.compile(content);
+                return compiled(mergedScope, helpers);
+            } catch (e) {
+                if (helpers.engine.options.debug) console.error('[AetherEngine] Include error:', e.message);
+                return ''; // Fail silently or return empty in production
+            }
+        }
         return '';
       }
     `;
@@ -431,7 +425,6 @@ class AetherEngine {
       return `__get('${identifier}')`;
     });
 
-    // Apply escaping only if not raw
     if (!isRaw) {
       if (/^__get\('[^']+'\)$/.test(parsed)) return `__escape(${parsed})`;
       if (!parsed.includes('__functions') && !parsed.includes('__filters') && !parsed.includes('__get(')) return `__escape(${parsed})`;
@@ -440,7 +433,6 @@ class AetherEngine {
     return parsed;
   }
 
-  // ... (parseFunctionArguments, parseCondition, parseForeachExpression remain exactly the same) ...
   parseFunctionArguments(argsString) {
     const args = []; let currentArg = '', inString = false, stringChar = '';
     for (let i = 0; i < argsString.length; i++) {
@@ -502,7 +494,7 @@ class AetherEngine {
       const renderFunc = new Function('data', 'helpers', `
         const __output = [];
         const __sections = {};
-        const __stacks = {}; // NEW: Stack storage for @push/@stack
+        const __stacks = {}; 
         const __escape = helpers.filters.get('escape') || function(s){ return s; };
         const __filters = helpers.filters;
         const __functions = helpers.functions;
@@ -547,22 +539,63 @@ class AetherEngine {
     }
     
     const renderFunc = this.compile(templateContent);
-    return renderFunc(data, { filters: this.filters, functions: this.functions, includes: options.includes || {} });
+    // FIX: Pass engine instance to helpers so __include can synchronously call loadTemplateSync
+    return renderFunc(data, { 
+        filters: this.filters, 
+        functions: this.functions, 
+        includes: options.includes || {},
+        engine: this 
+    });
   }
 
-  async loadTemplate(templateName) {
-    if (this.options.cacheEnabled && this.options.templateCache.has(templateName)) return this.options.templateCache.get(templateName);
-    const possiblePaths = [
+  // FIX: Extract unified path resolution logic, supporting dot notation (e.g., 'partials.header')
+  _getTemplatePaths(templateName) {
+    const paths = [
+      path.join(this.options.templateDir, 'partials', `${templateName}.aether`),
+      path.join(this.options.templateDir, 'components', `${templateName}.aether`),
       path.join(this.options.templateDir, 'pages', `${templateName}.aether`),
       path.join(this.options.templateDir, `${templateName}.aether`),
       path.join(this.options.templateDir, templateName),
       templateName 
     ];
+    
+    // Support dot notation resolution: 'partials.header' -> 'partials/header.aether'
+    if (templateName.includes('.')) {
+      const dotPath = templateName.replace(/\./g, path.sep) + '.aether';
+      paths.unshift(path.join(this.options.templateDir, dotPath));
+    }
+    
+    return paths;
+  }
+
+  async loadTemplate(templateName) {
+    if (this.options.cacheEnabled && this.options.templateCache.has(templateName)) return this.options.templateCache.get(templateName);
+    
+    const possiblePaths = this._getTemplatePaths(templateName);
     for (const templatePath of possiblePaths) {
       try {
         const content = await fs.readFile(templatePath, 'utf-8');
         if (this.options.cacheEnabled) this.options.templateCache.set(templateName, content);
         return content;
+      } catch (error) {}
+    }
+    throw new Error(`Template not found: ${templateName}`);
+  }
+  
+  // FIX: Add synchronous loading method specifically for runtime @include usage
+  loadTemplateSync(templateName) {
+    if (this.options.cacheEnabled && this.options.templateCache.has(templateName)) {
+        return this.options.templateCache.get(templateName);
+    }
+    
+    const possiblePaths = this._getTemplatePaths(templateName);
+    for (const templatePath of possiblePaths) {
+      try {
+        if (fs.existsSync(templatePath)) {
+            const content = fs.readFileSync(templatePath, 'utf-8');
+            if (this.options.cacheEnabled) this.options.templateCache.set(templateName, content);
+            return content;
+        }
       } catch (error) {}
     }
     throw new Error(`Template not found: ${templateName}`);
