@@ -168,7 +168,7 @@ class CompressionEngine {
     return finalResult;
   }
 
-  /**
+   /**
    * Minify CSS content with caching support
    * @param {string} css - CSS content
    * @param {Object} options - Minification options
@@ -182,18 +182,23 @@ class CompressionEngine {
     const opts = { ...this.options, ...options };
     let result = css;
 
-    // Remove CSS comments (preserve important comments)
+    // [Fix 1]: Protect strings, calc(), and url() from whitespace collapsing
+    const protectedBlocks = [];
+    result = result.replace(/(["'])(?:(?!\1|\\).|\\.)*\1|url\([^)]*\)|calc\([^)]*\)/gi, (match) => {
+      protectedBlocks.push(match);
+      return `__CSS_PROTECTED_${protectedBlocks.length - 1}__`;
+    });
+
+    // Remove CSS comments (preserve important/license comments)
     if (opts.removeComments) {
       result = result.replace(/\/\*[\s\S]*?\*\//g, (match) => {
-        // Preserve comments containing !important markers
-        return match.includes('!important') ? match : '';
+        return (match.includes('!important') || match.includes('@license') || match.includes('@preserve') || match.includes('!')) ? match : '';
       });
     }
 
-    // Minify CSS
+    // Minify CSS structure
     result = result
       .replace(/\s+/g, ' ')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/;\s+/g, ';')
       .replace(/:\s+/g, ':')
       .replace(/,\s+/g, ',')
@@ -205,14 +210,24 @@ class CompressionEngine {
       .replace(/\s*:\s*/g, ':')
       .replace(/\s*!\s*important/g, '!important')
       .replace(/#([0-9a-fA-F])\1([0-9a-fA-F])\2([0-9a-fA-F])\3/g, '#$1$2$3')
-      .replace(/\b0(\.\d+)?(?:px|em|rem|%|pt|pc|in|cm|mm|ex|ch|vh|vw|vmin|vmax)\b/g, '0')
+      .replace(/\b0(?:\.0+)?(?:px|em|rem|pt|pc|in|cm|mm|ex|ch|vh|vw|vmin|vmax)\b/gi, '0')
       .replace(/\b0 0 0 0\b/g, '0')
       .replace(/\b0 0\b/g, '0');
+
+    // [Fix 2]: Restore protected blocks back to the CSS
+    result = result.replace(/__CSS_PROTECTED_(\d+)__/g, (match, index) => {
+      return protectedBlocks[parseInt(index, 10)];
+    });
+
+    // [Fix 3]: Fix template engine escape residue (@@ -> @)
+    // This fixes issues where template engines fail to unescape @@import or @@keyframes
+    result = result.replace(/@@/g, '@');
 
     const finalResult = result.trim();
     this.setCached(cacheKey, finalResult);
     return finalResult;
   }
+
 
   /**
    * Minify JavaScript content with caching support
@@ -228,9 +243,9 @@ class CompressionEngine {
     const opts = { ...this.options, ...options };
     let result = js;
 
-    // Remove single-line comments
+    // Remove single-line comments (safely ignore URLs like http:// or https://)
     if (opts.removeComments) {
-      result = result.replace(/\/\/.*$/gm, '');
+      result = result.replace(/(^|[^:"'])\/\/.*$/gm, '$1');
     }
 
     // Remove multi-line comments (preserve license and preserve comments)
@@ -243,28 +258,27 @@ class CompressionEngine {
       });
     }
 
-    // Basic JavaScript minification
+    // Safe JavaScript minification
     result = result
+      // 1. Replace multiple whitespace/newlines with a single space
       .replace(/\s+/g, ' ')
-      .replace(/\s*([=+\-*/%&|^<>?:;,{}()[\]])\s*/g, '$1')
-      .replace(/\s*;\s*/g, ';')
+      // 2. [Critical Fix]: Remove spaces around safe operators, BUT EXCLUDE < and > to prevent breaking HTML tags if mixed
+      .replace(/\s*([=+\-*/%&|^?:;,{}()[\]])\s*/g, '$1')
+      // 3. Restore spaces after JS keywords to prevent syntax errors (e.g., 'constapp' -> 'const app')
+      .replace(/\b(var|let|const|return|typeof|instanceof|in|new|delete|void|throw|case|break|continue|yield|await|async|function|class|extends|import|export|from|default|if|else|for|while|do|switch|try|catch|finally|with)\b/g, '$1 ')
+      // 4. Clean up specific patterns
       .replace(/;\s*}/g, '}')
       .replace(/\s*{\s*/g, '{')
       .replace(/\s*}\s*/g, '}')
-      .replace(/\s*,\s*/g, ',')
-      .replace(/\s*:\s*/g, ':')
       .replace(/else\s*{/g, 'else{')
       .replace(/}\s*else/g, '}else')
-      .replace(/for\s*\(/g, 'for(')
-      .replace(/if\s*\(/g, 'if(')
-      .replace(/while\s*\(/g, 'while(')
-      .replace(/function\s*\(/g, 'function(')
-      .replace(/return\s+/g, 'return ');
+      .replace(/\s*=>\s*/g, '=>');
 
     const finalResult = result.trim();
     this.setCached(cacheKey, finalResult);
     return finalResult;
   }
+
 
   /**
    * Obfuscate JavaScript code with caching support
@@ -279,27 +293,32 @@ class CompressionEngine {
 
     const opts = {
       mangle: options.mangle !== false,
-      mangleProperties: options.mangleProperties || false,
-      reserved: options.reserved || ['render', 'data', 'helpers', 'exports', 'module', 'require', 'window', 'document', 'console', 'alert', 'fetch', 'Promise', 'JSON', 'Math', 'Date', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Function', 'RegExp', 'Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'InternalError', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'setImmediate', 'clearImmediate', 'requestAnimationFrame', 'cancelAnimationFrame', 'localStorage', 'sessionStorage', 'navigator', 'location', 'history'],
+      reserved: options.reserved || ['render', 'data', 'helpers', 'exports', 'module', 'require', 'window', 'document', 'console', 'alert', 'fetch', 'Promise', 'JSON', 'Math', 'Date', 'Object', 'Array', 'String', 'Number', 'Boolean', 'Function', 'RegExp', 'Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'EvalError', 'InternalError', 'setTimeout', 'setInterval', 'clearTimeout', 'clearInterval', 'setImmediate', 'clearImmediate', 'requestAnimationFrame', 'cancelAnimationFrame', 'localStorage', 'sessionStorage', 'navigator', 'location', 'history', 'getElementById', 'addEventListener', 'clipboard', 'writeText', 'querySelector', 'querySelectorAll', 'innerHTML', 'innerText', 'textContent', 'className', 'classList', 'style', 'setAttribute', 'getAttribute', 'removeAttribute', 'appendChild', 'removeChild', 'createElement', 'preventDefault', 'stopPropagation', 'target', 'currentTarget', 'value', 'checked', 'disabled', 'length', 'push', 'pop', 'shift', 'unshift', 'map', 'filter', 'reduce', 'forEach', 'find', 'includes', 'indexOf', 'join', 'split', 'replace', 'match', 'test', 'trim', 'toLowerCase', 'toUpperCase', 'keys', 'values', 'entries', 'assign', 'parse', 'stringify', 'log', 'warn', 'error', 'info', 'debug'],
       ...options
     };
 
     let result = js;
 
     if (opts.mangle) {
-      // Simple variable name obfuscation (for demonstration)
-      // In production, consider using a library like javascript-obfuscator
+      // [Critical Fix 1]: Protect string literals, template literals, regex, and comments
+      // This prevents replacing variable names that appear inside strings (e.g., "copy-npm-btn")
+      const protectedBlocks = [];
+      result = result.replace(/(["'`])(?:(?!\1|\\).|\\.)*\1|\/(?![/*])(?:\\.|[^/\\\n])+\/[gimuy]*|\/\*[\s\S]*?\*\/|\/\/.*/g, (match) => {
+        protectedBlocks.push(match);
+        return `__PROTECTED_${protectedBlocks.length - 1}__`;
+      });
+
+      // [Critical Fix 2]: Extract ALL valid JS identifiers (variables, function names, parameters)
+      // Instead of just looking for var/let/const, we find all words that look like variables
+      const identifierRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
       const variables = new Set();
-      const variableRegex = /\b(var|let|const|function)\s+([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
-      
-      // Collect variable names
       let match;
-      const matches = [];
-      while ((match = variableRegex.exec(result)) !== null) {
-        const varName = match;
-        if (!opts.reserved.includes(varName) && varName.length > 2) {
+      
+      while ((match = identifierRegex.exec(result)) !== null) {
+        const varName = match[1];
+        // Skip reserved words, JS keywords, and very short names (like i, e, x)
+        if (!opts.reserved.includes(varName) && varName.length > 2 && !/^(var|let|const|function|return|if|else|for|while|do|switch|case|break|continue|new|delete|typeof|instanceof|in|of|void|throw|try|catch|finally|class|extends|import|export|from|default|async|await|yield|true|false|null|undefined|this|super)$/.test(varName)) {
           variables.add(varName);
-          matches.push({ name: varName, index: match.index + match.length + 1 });
         }
       }
 
@@ -311,13 +330,17 @@ class CompressionEngine {
         counter++;
       });
 
-      // Apply obfuscation in reverse order to avoid conflicts
-      const sortedMatches = matches.sort((a, b) => b.index - a.index);
-      sortedMatches.forEach(({ name, index }) => {
-        if (mapping.has(name)) {
-          const newName = mapping.get(name);
-          result = result.slice(0, index) + newName + result.slice(index + name.length);
-        }
+      // [Critical Fix 3]: Use safe global regex replacement
+      variables.forEach(variable => {
+        const newName = mapping.get(variable);
+        // Use word boundaries to ensure we only replace exact variable names
+        const regex = new RegExp(`\\b${variable}\\b`, 'g');
+        result = result.replace(regex, newName);
+      });
+
+      // [Critical Fix 4]: Restore protected blocks back to the code
+      result = result.replace(/__PROTECTED_(\d+)__/g, (match, index) => {
+        return protectedBlocks[parseInt(index, 10)];
       });
     }
 
@@ -325,6 +348,7 @@ class CompressionEngine {
     this.setCached(cacheKey, finalResult);
     return finalResult;
   }
+
 
   /**
    * Process HTML content with embedded CSS and JavaScript
@@ -342,8 +366,8 @@ class CompressionEngine {
 
     // Process embedded CSS
     if (opts.minifyCSS) {
-      const styleRegex = /<style\b[^>]*>([\s\S]*?)<\/style>/gi;
-      result = result.replace(styleRegex, (match, styleContent) => {
+      const styleRegex = /<style\b([^>]*)>([\s\S]*?)<\/style>/gi;
+      result = result.replace(styleRegex, (match, attrs, styleContent) => {
         const minifiedCSS = this.minifyCSS(styleContent, opts);
         return match.replace(styleContent, minifiedCSS);
       });
@@ -351,8 +375,15 @@ class CompressionEngine {
 
     // Process embedded JavaScript
     if (opts.minifyJS || opts.mangleJS) {
-      const scriptRegex = /<script\b(?![\s\S]*?\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/gi;
-      result = result.replace(scriptRegex, (match, scriptContent) => {
+      // [Critical Fix]: Use a simpler regex and check for 'src' inside the callback.
+      // The previous negative lookahead (?![\s\S]*?\bsrc\s*=) would fail if ANY subsequent script had a src.
+      const scriptRegex = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+      result = result.replace(scriptRegex, (match, attrs, scriptContent) => {
+        // Skip external scripts that have a src attribute
+        if (/\bsrc\s*=/i.test(attrs)) {
+          return match;
+        }
+        
         let processedJS = scriptContent;
         if (opts.minifyJS) {
           processedJS = this.minifyJS(processedJS, opts);
@@ -390,6 +421,7 @@ class CompressionEngine {
     this.setCached(cacheKey, result);
     return result;
   }
+
 
   /**
    * Get compression statistics

@@ -5,7 +5,7 @@ A modern, lightweight template engine for Node.js with Blade-like syntax, suppor
 Features
 
 - Blade-like Syntax: Familiar syntax similar to Laravel Blade
-- Template Inheritance: Support for `@extends`, `@section`, `@yield`, `@include`
+- Template Inheritance: Support for `@extends`, `@section`, `@yield`
 - Conditionals & Loops: `@if`, `@else`, `@endif`, `@foreach`, `@endforeach`
 - Custom Functions: `{{ route('home') }}`, `{{ asset('images/logo.png') }}`
 - Chained Properties: `{{ auth().user.name }}`
