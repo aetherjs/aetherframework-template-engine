@@ -174,7 +174,6 @@ createRenderer(engineName = this.config.defaultEngine, options = {}) {
       if (cacheKey && cacheManager.has(cacheKey)) {
         const cached = cacheManager.get(cacheKey);
         if (Date.now() - cached.timestamp < config.cacheTTL) {
-          console.log(`📦 Cache hit for key: ${cacheKey.substring(0, 50)}...`);
           return cached.html;
         }
       }
@@ -208,7 +207,6 @@ createRenderer(engineName = this.config.defaultEngine, options = {}) {
             engine: engineName,
             renderTime: Date.now() - startTime
           });
-          console.log(`💾 Cached result for key: ${cacheKey.substring(0, 50)}...`);
         }
         
         return html;
