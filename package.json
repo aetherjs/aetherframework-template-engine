@@ -1,6 +1,6 @@
 {
   "name": "@aetherframework/template-engine",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A lightweight, high-performance template engine with SSR support and custom syntax",
   "main": "index.js",
   "type": "module",

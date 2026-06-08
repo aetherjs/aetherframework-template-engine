@@ -280,8 +280,9 @@ class CompressionEngine {
   }
 
 
-  /**
+   /**
    * Obfuscate JavaScript code with caching support
+   * Uses a strict character-by-character parser to prevent regex-related false positives
    * @param {string} js - JavaScript code
    * @param {Object} options - Obfuscation options
    * @returns {string} Obfuscated JavaScript
@@ -300,29 +301,230 @@ class CompressionEngine {
     let result = js;
 
     if (opts.mangle) {
-      // [Critical Fix 1]: Protect string literals, template literals, regex, and comments
-      // This prevents replacing variable names that appear inside strings (e.g., "copy-npm-btn")
       const protectedBlocks = [];
-      result = result.replace(/(["'`])(?:(?!\1|\\).|\\.)*\1|\/(?![/*])(?:\\.|[^/\\\n])+\/[gimuy]*|\/\*[\s\S]*?\*\/|\/\/.*/g, (match) => {
+      const protect = (match) => {
         protectedBlocks.push(match);
         return `__PROTECTED_${protectedBlocks.length - 1}__`;
-      });
+      };
 
-      // [Critical Fix 2]: Extract ALL valid JS identifiers (variables, function names, parameters)
-      // Instead of just looking for var/let/const, we find all words that look like variables
-      const identifierRegex = /\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b/g;
+      // [Critical Fix 1]: Strict Character-by-Character Lexer
+      // Replaces fragile regex parsing to perfectly handle nested template literals, strings, and comments
+      let parsedCode = '';
+      let i = 0;
+      const len = result.length;
+
+      while (i < len) {
+        const char = result[i];
+        const nextChar = result[i + 1];
+
+        // 1. Handle Single-line Comments (//)
+        if (char === '/' && nextChar === '/') {
+          let comment = '';
+          while (i < len && result[i] !== '\n') {
+            comment += result[i];
+            i++;
+          }
+          parsedCode += protect(comment);
+          continue;
+        }
+
+        // 2. Handle Multi-line Comments (/* */)
+        if (char === '/' && nextChar === '*') {
+          let comment = '/*';
+          i += 2;
+          while (i < len && !(result[i] === '*' && result[i + 1] === '/')) {
+            comment += result[i];
+            i++;
+          }
+          if (i < len) {
+            comment += '*/';
+            i += 2;
+          }
+          parsedCode += protect(comment);
+          continue;
+        }
+
+        // 3. Handle Strings (' and ")
+        if (char === '"' || char === "'") {
+          let str = char;
+          i++;
+          while (i < len && result[i] !== char) {
+            if (result[i] === '\\' && i + 1 < len) {
+              str += result[i] + result[i + 1];
+              i += 2;
+            } else {
+              str += result[i];
+              i++;
+            }
+          }
+          if (i < len) {
+            str += char;
+            i++;
+          }
+          parsedCode += protect(str);
+          continue;
+        }
+
+        // 4. Handle Template Literals (`) with Depth Tracking for ${...}
+        if (char === '`') {
+          let templateStr = '`';
+          i++;
+          while (i < len && result[i] !== '`') {
+            if (result[i] === '\\' && i + 1 < len) {
+              templateStr += result[i] + result[i + 1];
+              i += 2;
+            } else if (result[i] === '$' && result[i + 1] === '{') {
+              templateStr += '${';
+              i += 2;
+              let braceDepth = 1;
+              // Track nested braces inside the template expression
+              while (i < len && braceDepth > 0) {
+                if (result[i] === '{') braceDepth++;
+                else if (result[i] === '}') braceDepth--;
+                
+                if (braceDepth > 0) templateStr += result[i];
+                i++;
+              }
+              templateStr += '}';
+            } else {
+              templateStr += result[i];
+              i++;
+            }
+          }
+          if (i < len) {
+            templateStr += '`';
+            i++;
+          }
+          
+          // Desugar template literal into string concatenation to expose variables
+          if (!templateStr.includes('${')) {
+            parsedCode += protect(templateStr);
+          } else {
+            // Safely split by tracking braces instead of using flawed regex
+            const parts = [];
+            let currentText = '';
+            let expr = '';
+            let inExpr = false;
+            let depth = 0;
+            
+            for (let k = 1; k < templateStr.length - 1; k++) {
+              const c = templateStr[k];
+              if (!inExpr && c === '$' && templateStr[k+1] === '{') {
+                parts.push({ type: 'text', value: currentText });
+                currentText = '';
+                inExpr = true;
+                depth = 1;
+                k++; // skip {
+              } else if (inExpr) {
+                if (c === '{') depth++;
+                else if (c === '}') depth--;
+                
+                if (depth === 0) {
+                  parts.push({ type: 'expr', value: expr });
+                  expr = '';
+                  inExpr = false;
+                } else {
+                  expr += c;
+                }
+              } else {
+                currentText += c;
+              }
+            }
+            if (currentText) parts.push({ type: 'text', value: currentText });
+
+            let reconstructed = '';
+            parts.forEach(part => {
+              if (part.type === 'expr') {
+                reconstructed += ` + (${part.value}) + `;
+              } else if (part.value) {
+                reconstructed += protect(JSON.stringify(part.value));
+              }
+            });
+            parsedCode += reconstructed.replace(/^\s*\+\s*|\s*\+\s*$/g, '').replace(/\+\s*\+\s*/g, '+');
+          }
+          continue;
+        }
+
+        // 5. Handle Regular Expressions vs Division
+        if (char === '/') {
+          let prevToken = parsedCode.trim().slice(-1);
+          // If preceded by ), ], 0-9, or a word character, it's likely division
+          if (prevToken && /[\w\)\]]/.test(prevToken)) {
+            parsedCode += char;
+            i++;
+            continue;
+          }
+          
+          let regexStr = '/';
+          i++;
+          let inCharClass = false;
+          while (i < len) {
+            if (result[i] === '\\' && i + 1 < len) {
+              regexStr += result[i] + result[i + 1];
+              i += 2;
+            } else if (result[i] === '[') {
+              inCharClass = true;
+              regexStr += result[i];
+              i++;
+            } else if (result[i] === ']') {
+              inCharClass = false;
+              regexStr += result[i];
+              i++;
+            } else if (result[i] === '/' && !inCharClass) {
+              regexStr += '/';
+              i++;
+              while (i < len && /[gimsuy]/.test(result[i])) {
+                regexStr += result[i];
+                i++;
+              }
+              break;
+            } else if (result[i] === '\n') {
+              // Not a valid regex, rollback and treat as division
+              i = i - regexStr.length + 1;
+              parsedCode += '/';
+              break;
+            } else {
+              regexStr += result[i];
+              i++;
+            }
+          }
+          parsedCode += protect(regexStr);
+          continue;
+        }
+
+        parsedCode += char;
+        i++;
+      }
+      result = parsedCode;
+
+      // [Critical Fix 2]: Extract Identifiers (Variables/Functions)
+      const identifierRegex = /(?<![.\w$])\b([a-zA-Z_$][a-zA-Z0-9_$]*)\b(?!\s*:)/g;
       const variables = new Set();
       let match;
       
+      const jsKeywords = new Set([
+        'var', 'let', 'const', 'function', 'return', 'if', 'else', 'for', 'while', 'do', 
+        'switch', 'case', 'break', 'continue', 'new', 'delete', 'typeof', 'instanceof', 
+        'in', 'of', 'void', 'throw', 'try', 'catch', 'finally', 'class', 'extends', 
+        'import', 'export', 'from', 'default', 'async', 'await', 'yield', 'true', 'false', 
+        'null', 'undefined', 'this', 'super', 'enum', 'implements', 'interface', 'package', 
+        'private', 'protected', 'public', 'static', 'debugger', 'with'
+      ]);
+
       while ((match = identifierRegex.exec(result)) !== null) {
         const varName = match[1];
-        // Skip reserved words, JS keywords, and very short names (like i, e, x)
-        if (!opts.reserved.includes(varName) && varName.length > 2 && !/^(var|let|const|function|return|if|else|for|while|do|switch|case|break|continue|new|delete|typeof|instanceof|in|of|void|throw|try|catch|finally|class|extends|import|export|from|default|async|await|yield|true|false|null|undefined|this|super)$/.test(varName)) {
+        
+        // [Critical Fix 3]: Skip our own placeholders so they don't get renamed!
+        if (/^__PROTECTED_\d+__$/.test(varName)) continue;
+
+        if (!opts.reserved.includes(varName) && 
+            varName.length > 2 && 
+            !jsKeywords.has(varName)) {
           variables.add(varName);
         }
       }
 
-      // Generate obfuscated names
+      // Generate obfuscation mapping
       const mapping = new Map();
       let counter = 0;
       variables.forEach(variable => {
@@ -330,15 +532,15 @@ class CompressionEngine {
         counter++;
       });
 
-      // [Critical Fix 3]: Use safe global regex replacement
+      // [Critical Fix 4]: Safely Replace Variables
       variables.forEach(variable => {
         const newName = mapping.get(variable);
-        // Use word boundaries to ensure we only replace exact variable names
-        const regex = new RegExp(`\\b${variable}\\b`, 'g');
+        const escapedVar = variable.replace(/\$/g, '\\$');
+        const regex = new RegExp(`(?<![.\\w$])\\b${escapedVar}\\b(?!\\s*:)`, 'g');
         result = result.replace(regex, newName);
       });
 
-      // [Critical Fix 4]: Restore protected blocks back to the code
+      // Restore all protected blocks (strings, comments, regex, template text)
       result = result.replace(/__PROTECTED_(\d+)__/g, (match, index) => {
         return protectedBlocks[parseInt(index, 10)];
       });
@@ -348,6 +550,7 @@ class CompressionEngine {
     this.setCached(cacheKey, finalResult);
     return finalResult;
   }
+
 
 
   /**
